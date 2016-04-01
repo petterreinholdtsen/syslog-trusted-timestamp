@@ -1,0 +1,9 @@
+Syslog trusted timestamp
+========================
+
+A system to fetch a trusted timestamp from a trusted timestamp service
+and syslog the result.  This is particularly useful when syslogging
+the timestamp of the previous syslog files every time the log files
+are rotated, providing a chain of trusted timestamp that allow log
+tampering to be discovered.
+

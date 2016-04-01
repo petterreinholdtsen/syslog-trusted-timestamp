@@ -1,0 +1,112 @@
+#!/bin/sh
+
+# Syslog the trusted timestamp of a given file (for example the
+# freshly rotated syslog files), and provide a way to verify the
+# trusted timestamp signature.
+
+# get TSA signature and syslog it as a sequence of numbered syslog
+# messages, where 0 is the file name / id and 1-n is the base64
+# encoded signature.
+
+# 986 seem to be an ok line length that isn't split by syslog, while
+# giving a reasonable low number (9 during testing) of lines in the
+# log
+b64linelen=986
+
+tsaurls="https://freetsa.org/tsr
+         http://zeitstempel.dfn.de"
+
+tsaurl=https://freetsa.org/tsr
+tsacaurl=https://freetsa.org/files/cacert.pem
+
+# Public and free alternative
+#tsacaurls="https://pki.pca.dfn.de/global-services-ca/pub/cacert/chain.txt"
+#tsaurl="http://zeitstempel.dfn.de"
+
+# Allow the default TSA to be replaced
+if [ -e /etc/syslog-trusted-timestamp.conf ] ; then
+    . /etc/syslog-trusted-timestamp.conf
+fi
+
+usage() {
+    cat <<EOF
+Usage: $0 [file [file] ...]
+       $0 --verify file logfile
+
+By defeault, send trusted timestamp(s) to syslog for the files listed
+as argument.
+
+When using the --verify option, check if one file matches the
+equivalent timestamp in the log file.
+
+EOF
+}
+
+syslog_timestamp() {
+    resfile=$(mktemp -t tmp.XXXXXXXXXX.tsr)
+
+    for tsaurl in $tsaurls ; do
+	openssl ts \
+	    -query \
+	    -data "$1" \
+	    -cert -sha256 \
+	    -no_nonce \
+	    | curl --silent \
+	    --header "Content-Type: application/timestamp-query" \
+	    --data-binary "@-" \
+	    "$tsaurl" > "$resfile"
+	openssl ts -reply -in "$resfile" -text 1>&2
+        # syslog the result as numbered base64 encoded lines
+	(
+	    echo "fileid $1"
+	    num=1
+	    base64 -w $b64linelen < "$resfile" | while read line ; do
+		echo "$num $line"
+		num=$(($num + 1))
+	    done
+	) | logger -t syslog-truststamp -i
+    done
+    rm "$resfile"
+}
+
+syslog_verify_timestamp() {
+    resfile=$(mktemp -t tmp.XXXXXXXXXX.tsr)
+
+    datafile="$1"
+    logfile="$2"
+    stampline=$(awk "/syslog-truststamp\[.*\]: fileid $datafile/ {print \$5; exit}" $logfile |sed -e 's/\[/\\\[/g' -e 's/\]/\\\]/g')
+    if [ -z "$stampline" ]; then
+	echo "error: unable to find truststamp for $datafile in $logfile"
+	return 1
+    fi
+
+    grep "$stampline" $logfile | grep -v fileid \
+	| cut -d: -f4- | sort -n \
+	| base64 -d > "$resfile"
+
+    # FIXME figure out how to get 0-line to set $1
+    openssl ts \
+	-verify \
+	-text \
+	-data "$datafile" \
+	-in "$resfile" \
+	-CAfile "$cafile" 1>&2
+    rm "$resfile"
+}
+
+case "$1" in
+    --verify)
+	datafile="$2"
+	logfile="$3"
+	syslog_verify_timestamp $datafile $logfile 
+	;;
+    -h|--help)
+	usage
+	exit 0
+	;;
+    *)
+	for file in "$*"; do
+	    syslog_timestamp "$file"
+	done
+	;;
+esac
