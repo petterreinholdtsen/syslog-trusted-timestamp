@@ -7,3 +7,17 @@ the timestamp of the previous syslog files every time the log files
 are rotated, providing a chain of trusted timestamp that allow log
 tampering to be discovered.
 
+Wikipedia got more information about Trusted timestamping and Linked
+timestamping on
+https://en.wikipedia.org/wiki/Trusted_timestamping and
+https://en.wikipedia.org/wiki/Linked_timestamping .  I recommend you read
+those pages.
+
+Thre are several trusted timestamping services available, both free
+and commercially available.  Check for exmaple out
+
+ * https://freetsa.org/tsr
+ * http://zeitstempel.dfn.de
+
+You might also want to check out my blog post about the topic on 
+http://people.skolelinux.org/pere/blog/Public_Trusted_Timestamping_services_for_everyone.html .
